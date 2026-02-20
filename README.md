@@ -1,2 +1,1 @@
-# nkateko
-Bokamoso LMS
+# Nkateko - Bokamoso Unified Portal System

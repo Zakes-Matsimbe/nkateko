@@ -1,449 +1,199 @@
 // src/pages/LearnerPortal.jsx
 import { useState, useEffect } from 'react';
 import useAuthStore from '../stores/authStore';
-import api from '../lib/api';
+import Dashboard from './learner_comp/Dashboard';
+import Assessments from './learner_comp/Assessments';
+import Attendance from './learner_comp/Attendance';
+import Notifications from './learner_comp/Notifications';
+import Applications from './learner_comp/Applications';
+import TermMarks from './learner_comp/TermMarks';
+import TeacherReviews from './learner_comp/TeacherReviews';
+import Warnings from './learner_comp/Warnings';
+import Footer from './learner_comp/Footer';
+import './learner_comp/learner.css';
+
+
 
 function LearnerPortal() {
   const { user, logout, toggleTheme, theme } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // false = open
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [profile, setProfile] = useState(null);
-  const [rawAssessments, setRawAssessments] = useState([]);
-  const [rawAttendance, setRawAttendance] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [profileRes, assessRes, attendRes, notifRes, appRes] = await Promise.all([
-          api.get('/api/learner/profile'),
-          api.get('/api/learner/assessments'),
-          api.get('/api/learner/attendance'),
-          api.get('/api/learner/notifications'),
-          api.get('/api/learner/applications'),
-        ]);
-
-        setProfile(profileRes.data);
-        setRawAssessments(assessRes.data);
-        setRawAttendance(attendRes.data);
-        setNotifications(notifRes.data);
-        setApplications(appRes.data);
-      } catch (err) {
-        setError(err.response?.data?.detail || 'Failed to load data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    setLoading(false);
   }, []);
 
-  // Group raw attendance by month
-  const groupedAttendance = rawAttendance.reduce((acc, item) => {
-    const month = new Date(item.class_date).toLocaleString('default', { month: 'long', year: 'numeric' });
-    if (!acc[month]) {
-      acc[month] = { total_days: 0, attended: 0 };
-    }
-    acc[month].total_days += 1;
-    if (item.status === 'Attended') acc[month].attended += 1;
-    return acc;
-  }, {});
-
-  // Group raw assessments by month/subject
-  const groupedAssessments = rawAssessments.reduce((acc, item) => {
-    const month = new Date(item.date_written).toLocaleString('default', { month: 'long', year: 'numeric' });
-    const subject = item.subject;
-    const key = `${month} - ${subject}`;
-    if (!acc[key]) {
-      acc[key] = { month, subject, marks: [] };
-    }
-    acc[key].marks.push(parseFloat(item.mark));
-    return acc;
-  }, {});
-
-  const getAttendanceComment = (perc) => {
-    if (perc < 60) return 'Bad';
-    if (perc < 75) return 'Be careful';
-    if (perc < 85) return 'No so well';
-    if (perc < 100) return 'Good';
-    return 'Good';
-  };
-
-  const getAssessmentComment = (avg) => {
-    if (avg < 60) return 'Not doing well';
-    if (avg < 70) return 'Trying';
-    if (avg < 85) return 'Good';
-    return 'Excellent';
-  };
-
-  const getOutcome = (perc) => {
-    if (perc < 45) return 'Failed';
-    if (perc < 60) return 'Below expectation';
-    if (perc < 85) return 'Passed';
-    return 'Excellent';
-  };
-
   if (loading) {
-    return <div className="d-flex min-vh-100 align-items-center justify-content-center">
-      <div className="spinner-border text-primary" role="status"></div>
-    </div>;
+    return (
+      <div className="d-flex min-vh-100 align-items-center justify-content-center bg-body">
+        <div className="spinner-border text-primary" role="status" style={{ width: '5rem', height: '5rem' }}>
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
   }
 
-  if (error) {
-    return <div className="d-flex min-vh-100 align-items-center justify-content-center">
-      <div className="alert alert-danger">{error}</div>
-    </div>;
+  if (error || !user) {
+    return (
+      <div className="d-flex min-vh-100 align-items-center justify-content-center bg-body">
+        <div className="alert alert-danger text-center p-5 rounded-4 shadow">
+          {error || 'Session expired. Please login again.'}
+          <div className="mt-4">
+            <a href="/login" className="btn btn-primary btn-lg">Go to Login</a>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="d-flex min-vh-100" data-bs-theme={theme}>
-      {/* Sidebar */}
-      <div
-        className={`offcanvas offcanvas-start ${sidebarOpen ? 'show' : ''}`}
-        tabIndex="-1"
-        id="sidebar"
-        style={{ width: '280px' }}
-      >
-        <div className="offcanvas-header">
-          <h5 className="offcanvas-title">Learner Menu</h5>
-          <button type="button" className="btn-close" onClick={() => setSidebarOpen(false)}></button>
-        </div>
-        <div className="offcanvas-body p-0">
-          <ul className="list-group list-group-flush">
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }}>
-              Dashboard
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('assessments'); setSidebarOpen(false); }}>
-              Assessments
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('attendance'); setSidebarOpen(false); }}>
-              Attendance
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('notifications'); setSidebarOpen(false); }}>
-              Notifications
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('applications'); setSidebarOpen(false); }}>
-              Applications
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('term-marks'); setSidebarOpen(false); }}>
-              Term Marks
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('teacher-reviews'); setSidebarOpen(false); }}>
-              Teacher Reviews
-            </li>
-            <li className="list-group-item list-group-item-action" onClick={() => { setActiveTab('warnings'); setSidebarOpen(false); }}>
-              Warnings
-            </li>
-            <li className="list-group-item list-group-item-action text-danger" onClick={logout}>
-              Logout
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-grow-1">
-        {/* Navbar */}
-        <nav className="navbar navbar-expand navbar-light bg-white dark:bg-dark shadow-sm sticky-top">
-          <div className="container-fluid px-4">
-            <button className="btn btn-outline-secondary d-lg-none me-3" onClick={() => setSidebarOpen(true)}>
-              <i className="bi bi-list fs-4"></i>
-            </button>
-            <a className="navbar-brand fw-bold fs-4" href="#">
-              Learner Portal
-            </a>
-            <div className="ms-auto d-flex align-items-center gap-3">
-              <span className="d-none d-md-block">
-                {profile?.name}
-              </span>
-              <button className="btn btn-outline-secondary" onClick={toggleTheme}>
-                {theme === 'light' ? 'Dark' : 'Light'}
-              </button>
-              <button className="btn btn-outline-danger" onClick={logout}>
-                Logout
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        {/* Dashboard */}
-        <div className="container py-5">
-          {activeTab === 'dashboard' && (
-            <div>
-              <h2 className="mb-4">Dashboard</h2>
-              <div className="row g-4 mb-5">
-
-
-
-
-{/* Profile Section */}
-<section id="profile" className="mb-5">
-  <div className="card shadow border-0 rounded-4 overflow-hidden">
-    <div className="card-body p-4 p-md-5 text-center">
-      <i className="bi bi-person-circle display-1 text-primary mb-4"></i>
-      
-      <h2 className="mb-3 fw-bold">
-        Hi, 🤗 {profile?.name || 'Learner'} 
-      </h2>
-      
-      <div className="mb-4">
-       {/*} <p className="fs-5 text-muted mb-1">
-          Bokamoso Number
-        </p> */}
-        <p className="fs-4 fw-bold text-dark">
-          {profile?.bokamoso_number || 'Not available'}
-        </p>
-      </div>
-
-          {/* Other profile info */}
-          <div className="row g-3 justify-content-center mb-4">
-            <div className="col-6 col-md-4">
-              <div className="bg-light dark:bg-secondary p-3 rounded">
-                <strong>Email</strong><br />
-                {profile?.email || 'N/A'}
-              </div>
-            </div>
-
-
-          </div>
-
-          <button className="btn btn-outline-primary btn-lg px-5">
-            Change Email
+    <div className="d-flex flex-column min-vh-100" data-bs-theme={theme}>
+      {/* Fixed Navbar */}
+      <nav className="navbar navbar-expand-lg bg-white dark:bg-dark shadow fixed-top">
+        <div className="container-fluid px-3 px-md-5">
+          {/* Hamburger always visible */}
+          <button
+            className="btn btn-outline-secondary me-3"
+            onClick={() => setSidebarCollapsed(prev => !prev)}
+            aria-label="Toggle sidebar"
+          >
+            <i className="bi bi-list fs-3"></i>
           </button>
-        </div>
-      </div>
-    </section>
 
+          <a className="navbar-brand fw-bold fs-4 fs-md-3" href="#">
+            Learner Portal
+          </a>
 
-                {/* Attendance Summary */}
-                <div className="col-12 col-md-6">
-                  <div className="card shadow">
-                    <div className="card-body">
-                      <h4>Attendance Summary</h4>
-                      <table className="table table-striped table-hover">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Month</th>
-                            <th>Total Days</th>
-                            <th>Attended</th>
-                            <th>%</th>
-                            <th>Comment</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(groupedAttendance).map(([month, data], i) => {
-                            const perc = (data.attended / data.total_days * 100).toFixed(0);
-                            return (
-                              <tr key={i}>
-                                <td>{i + 1}</td>
-                                <td>{month}</td>
-                                <td>{data.total_days}</td>
-                                <td>{data.attended}</td>
-                                <td>{perc}%</td>
-                                <td>{getAttendanceComment(perc)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Assessments Summary */}
-                <div className="col-12 col-md-6">
-                  <div className="card shadow">
-                    <div className="card-body">
-                      <h4>Assessments Summary</h4>
-                      <table className="table table-striped table-hover">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Month</th>
-                            <th>Subject</th>
-                            <th>Average</th>
-                            <th>Comment</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.values(groupedAssessments).map((item, i) => {
-                            const avg = item.marks.reduce((a, b) => a + b, 0) / item.marks.length;
-                            return (
-                              <tr key={i}>
-                                <td>{i + 1}</td>
-                                <td>{item.month}</td>
-                                <td>{item.subject}</td>
-                                <td>{avg.toFixed(0)}%</td>
-                                <td>{getAssessmentComment(avg)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+          <div className="ms-auto d-flex align-items-center gap-3">
+              <div className="d-flex align-items-center gap-2">
+                <span className="fw-medium d-inline">
+                  {user?.name || 'Learner'}
+                </span>
               </div>
-            </div>
-          )}
 
-          {activeTab === 'assessments' && (
-            <div>
-              <h2 className="mb-4">Assessments</h2>
-              <table className="table table-striped table-hover table-bordered shadow-sm">
-                <thead className="bg-primary text-white">
-                  <tr>
-                    <th>#</th>
-                    <th>Subject</th>
-                    <th>Assessment Name</th>
-                    <th>Date Written</th>
-                    <th>%</th>
-                    <th>Outcome</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rawAssessments.map((a, i) => (
-                    <tr key={i}>
-                      <td>{i + 1}</td>
-                      <td>{a.subject}</td>
-                      <td>{a.assessment_name}</td>
-                      <td>{new Date(a.date_written).toLocaleDateString()}</td>
-                      <td>{a.mark}%</td>
-                      <td>{getOutcome(a.mark)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <button className="btn btn-outline-secondary rounded-circle p-2" onClick={toggleTheme}>
+              <i className={`bi ${theme === 'light' ? 'bi-moon-stars-fill' : 'bi-sun-fill'} fs-5`}></i>
+            </button>
 
-              {/* Summary below */}
-              <h4 className="mt-4">Summary</h4>
-              <table className="table table-striped table-hover">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Month</th>
-                    <th>Subject</th>
-                    <th>Average</th>
-                    <th>Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.values(groupedAssessments).map((item, i) => {
-                    const avg = item.marks.reduce((a, b) => a + b, 0) / item.marks.length;
-                    return (
-                      <tr key={i}>
-                        <td>{i + 1}</td>
-                        <td>{item.month}</td>
-                        <td>{item.subject}</td>
-                        <td>{avg.toFixed(0)}%</td>
-                        <td>{getAssessmentComment(avg)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+            <button className="btn btn-outline-danger d-none d-md-block" onClick={logout}>
+              Logout
+            </button>
+          </div>
 
-          {activeTab === 'attendance' && (
-            <div>
-              <h2 className="mb-4">Attendance</h2>
-              <table className="table table-striped table-hover table-bordered shadow-sm">
-                <thead className="bg-primary text-white">
-                  <tr>
-                    <th>#</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rawAttendance.map((a, i) => (
-                    <tr key={i}>
-                      <td>{i + 1}</td>
-                      <td>{new Date(a.class_date).toLocaleDateString()}</td>
-                      <td>{a.status}</td>
-                      <td>{a.status === 'Apology' ? a.apology_message : ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Summary below */}
-              <h4 className="mt-4">Summary</h4>
-              <table className="table table-striped table-hover">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Month</th>
-                    <th>Total Days</th>
-                    <th>Attended</th>
-                    <th>%</th>
-                    <th>Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(groupedAttendance).map(([month, data], i) => {
-                    const perc = (data.attended / data.total_days * 100).toFixed(0);
-                    return (
-                      <tr key={i}>
-                        <td>{i + 1}</td>
-                        <td>{month}</td>
-                        <td>{data.total_days}</td>
-                        <td>{data.attended}</td>
-                        <td>{perc}%</td>
-                        <td>{getAttendanceComment(perc)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Add other tabs similarly */}
-
-          {/* Notifications tab */}
-          {activeTab === 'notifications' && (
-            <div>
-              <h2 className="mb-4">Notifications</h2>
-              <ol className="list-group list-group-numbered shadow-sm rounded">
-                {notifications.map((n, i) => (
-                  <li key={i} className="list-group-item d-flex justify-content-between align-items-start">
-                    <div className="ms-2 me-auto">
-                      <div className="fw-bold">{n.title}</div>
-                      {n.content}
-                    </div>
-                    <span className="badge bg-primary rounded-pill">{n.created_at}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {/* Applications tab */}
-          {activeTab === 'applications' && (
-            <div>
-              <h2 className="mb-4">Applications</h2>
-              <ol className="list-group list-group-numbered shadow-sm rounded">
-                {applications.map((a, i) => (
-                  <li key={i} className="list-group-item d-flex justify-content-between align-items-start">
-                    <div className="ms-2 me-auto">
-                      <div className="fw-bold">{a.app_id}</div>
-                      Year: {a.year}, Status: {a.status}, Grade: {a.grade}
-                    </div>
-                    <span className="badge bg-primary rounded-pill">{a.created_at}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
         </div>
+      </nav>
+
+      {/* Layout */}
+      <div className="d-flex flex-grow-1" style={{ paddingTop: '70px' }}>
+        {/* Collapsible Sidebar */}
+        <aside
+          className={`bg-white dark:bg-dark shadow transition-all duration-300 ${sidebarCollapsed ? 'collapsed' : ''}`}
+          style={{
+            width: sidebarCollapsed ? '80px' : '280px',
+            minHeight: 'calc(100vh - 70px)',
+            transition: 'width 0.3s ease',
+            position: 'fixed',
+            top: '70px',
+            left: 0,
+            zIndex: 1020,
+            overflowY: 'auto',
+          }}
+        >
+          <div className="p-4">
+            <h5 className="mb-4 fw-bold" style={{ opacity: sidebarCollapsed ? 0 : 1, transition: 'opacity 0.3s ease' }}>
+              Menu
+            </h5>
+            <ul className="nav flex-column nav-pills gap-2">
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                  <i className="bi bi-house-door me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Dashboard</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'assessments' ? 'active' : ''}`} onClick={() => setActiveTab('assessments')}>
+                  <i className="bi bi-journal-check me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Assessments</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}>
+                  <i className="bi bi-calendar-check me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Attendance</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+                  <i className="bi bi-bell me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Notifications</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'applications' ? 'active' : ''}`} onClick={() => setActiveTab('applications')}>
+                  <i className="bi bi-file-earmark-plus me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Applications</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'term-marks' ? 'active' : ''}`} onClick={() => setActiveTab('term-marks')}>
+                  <i className="bi bi-clipboard-check me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Term Marks</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'teacher-reviews' ? 'active' : ''}`} onClick={() => setActiveTab('teacher-reviews')}>
+                  <i className="bi bi-star me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Teacher Reviews</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'warnings' ? 'active' : ''}`} onClick={() => setActiveTab('warnings')}>
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Warnings</span>
+                </button>
+              </li>
+              <li className="nav-item mt-5">
+                <button className="nav-link w-100 text-start text-danger" onClick={logout}>
+                  <i className="bi bi-box-arrow-right me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Logout</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </aside>
+
+        {/* Main Content (scrollable only) */}
+      <main
+        className="flex-grow-1 overflow-auto bg-body w-100"
+        style={{
+          marginLeft: sidebarCollapsed ? '80px' : '280px',
+          transition: 'margin-left 0.3s ease',
+          paddingBottom: '80px', // footer space
+        }}
+      >
+        {/* GLOBAL CONTENT WRAPPER */}
+        <div className="w-100 h-100 px-3 px-lg-4 py-4">
+          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'assessments' && <Assessments />}
+          {activeTab === 'attendance' && <Attendance />}
+          {activeTab === 'notifications' && <Notifications />}
+          {activeTab === 'applications' && <Applications />}
+          {activeTab === 'term-marks' && <TermMarks />}
+          {activeTab === 'teacher-reviews' && <TeacherReviews />}
+          {activeTab === 'warnings' && <Warnings />}
+        </div>
+      </main>
+
+
       </div>
+
+      {/* Fixed Full-Width Footer */}
+         <Footer sidebarIsClosed={sidebarCollapsed} />
+
+
     </div>
   );
 }

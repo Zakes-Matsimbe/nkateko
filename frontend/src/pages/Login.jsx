@@ -46,17 +46,25 @@ function Login() {
         detected_role: roleFromPrefix,
       });
 
-        console.log("Success response:", response.data);
+      console.log("Success response:", response.data);
+
       const { user, token } = response.data;
 
+      // Store user & token
       login({ ...user, token });
       localStorage.setItem('nkatekoUser', JSON.stringify(user));
       localStorage.setItem('nkatekoToken', token);
 
-      if (user.role === 'Learner') navigate('/learner');
-      else if (user.role === 'Staff') navigate('/staff');
-      else if (user.role === 'Admin') navigate('/admin');
-      else setError('Unknown role returned from server');
+      // Redirect based on role - no intermediate /
+      if (user.role === 'Learner') {
+        navigate('/learner', { replace: true });
+      } else if (user.role === 'Staff') {
+        navigate('/staff', { replace: true });
+      } else if (user.role === 'Admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        setError('Unknown role returned from server');
+      }
     } catch (err) {
       console.log("Login error:", err.response?.data, err.response?.status);
       setError(
@@ -69,104 +77,97 @@ function Login() {
   };
 
   return (
-      <div className="min-vh-100 d-flex align-items-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+    <div className="min-vh-100 d-flex align-items-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
       <div className="container-fluid px-3 px-md-5">
         <div className="row justify-content-center">
-          {/* HARD WIDTH FIX — this is what actually solves it */} 
+          <div className="col-12" style={{ maxWidth: '1100px' }}>
+            <div className="card shadow-lg border-0 rounded-4 overflow-hidden">
+              
+              {/* Header */}
+              <div className="card-header bg-primary text-white text-center py-5">
+                <h2 className="mb-1">Login to Nkateko</h2>
+                <small className="d-block opacity-75">Secure access to your portal</small>
+                <small>Enter your Bokamoso reference number and password</small>
+              </div>
 
+              {/* Body */}
+              <div className="card-body p-5">
+                {error && (
+                  <div className="alert alert-danger alert-dismissible fade show">
+                    {error}
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => setError('')}
+                    />
+                  </div>
+                )}
 
-            <div className="col-12" style={{ maxWidth: '1100px' }}>
-              <div className="card shadow-lg border-0 rounded-4 overflow-hidden">
-                
-                {/* Header */}
-                <div className="card-header bg-primary text-white text-center py-5">
-                  <h2 className="mb-1">Login to Nkateko</h2>
-                  <small className="d-block opacity-75">Secure access to your portal</small>
-                  <small>Enter your Bokamoso reference number and password</small>
-                </div>
-
-                {/* Body */}
-                <div className="card-body p-5">
-                  {error && (
-                    <div className="alert alert-danger alert-dismissible fade show">
-                      {error}
-                      <button
-                        type="button"
-                        className="btn-close"
-                        onClick={() => setError('')}
-                      />
+                <form onSubmit={handleSubmit}>
+                  {/* Reference */}
+                  <div className="mb-4">
+                    <label className="form-label fw-bold">Reference Number</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-lg"
+                      value={identifier}
+                      onChange={handleIdentifierChange}
+                      placeholder="ADM12345, BET0001, BOK9999"
+                      required
+                    />
+                    <div className="form-text mt-2">
+                      Detected role:{' '}
+                      <strong
+                        className={
+                          detectedRole === 'Unknown'
+                            ? 'text-danger'
+                            : 'text-success'
+                        }
+                      >
+                        {detectedRole}
+                      </strong>
                     </div>
-                  )}
+                  </div>
 
-                  <form onSubmit={handleSubmit}>
-                    {/* Reference */}
-                    <div className="mb-4">
-                      <label className="form-label fw-bold">Reference Number</label>
+                  {/* Password */}
+                  <div className="mb-4">
+                    <label className="form-label fw-bold">Password</label>
+                    <div className="input-group input-group-lg">
                       <input
-                        type="text"
-                        className="form-control form-control-lg"
-                        value={identifier}
-                        onChange={handleIdentifierChange}
-                        placeholder="ADM12345, BET0001, BOK9999"
+                        type={showPassword ? 'text' : 'password'}
+                        className="form-control"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
                       />
-                      <div className="form-text mt-2">
-                        Detected role:{' '}
-                        <strong
-                          className={
-                            detectedRole === 'Unknown'
-                              ? 'text-danger'
-                              : 'text-success'
-                          }
-                        >
-                          {detectedRole}
-                        </strong>
-                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? '🙈' : '👁️'}
+                      </button>
                     </div>
-
-                    {/* Password */}
-                    <div className="mb-4">
-                      <label className="form-label fw-bold">Password</label>
-                      <div className="input-group input-group-lg">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          className="form-control"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary"
-                          onClick={() => setShowPassword(!showPassword)}
-                          tabIndex={-1}
-                        >
-                          {showPassword ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="btn btn-primary btn-lg w-100 py-3"
-                      disabled={loading || detectedRole === 'Unknown' || !identifier}
-                    >
-                      {loading ? 'Signing In…' : 'Sign In'}
-                    </button>
-                  </form>
-
-                  <div className="text-center mt-4">
-                    <a href="#" className="text-muted">
-                      Forgot password?
-                    </a>
                   </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-lg w-100 py-3"
+                    disabled={loading || detectedRole === 'Unknown' || !identifier}
+                  >
+                    {loading ? 'Signing In…' : 'Sign In'}
+                  </button>
+                </form>
+
+                <div className="text-center mt-4">
+                  <a href="#" className="text-muted">
+                    Forgot password?
+                  </a>
                 </div>
               </div>
             </div>
-
- 
-
-            
+          </div>
         </div>
       </div>
     </div>

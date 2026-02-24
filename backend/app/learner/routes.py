@@ -1,25 +1,23 @@
 # app/learner/routes.py
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body, Form
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from jose import JWTError, jwt
-from ..config import SECRET_KEY, ALGORITHM, UPLOAD_DIR
+from ..config import SECRET_KEY, ALGORITHM, UPLOAD_DIR, BASE_URL
 from ..database import get_db
 from ..auth.dependencies import oauth2_scheme, get_current_user
 import os
 import shutil
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Dict, Any
+from pydantic import BaseModel, Field
+from typing import Dict, Any, List
 import json
 import random
 import string
 
 
 router = APIRouter(prefix="/api/learner", tags=["learner"])
-
-from sqlalchemy.orm import Session
-
 
 def get_learner_grade_from_db(
     db: Session,
@@ -134,64 +132,6 @@ def get_notifications(db: Session = Depends(get_db), current_user: dict = Depend
 
     # Convert to dicts
     return [dict(row._mapping) for row in all_results]
-
-@router.get("/notificationss")
-def get_notifications(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    grade = get_learner_grade_from_db(db, current_user)
-    #user_id = int(current_user["sub"])
-
-    user_id = (
-        current_user.get("user_id")
-        or current_user.get("id")
-        or current_user.get("sub")
-    )
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid user token")
-
-    query = text("""
-        SELECT
-            n.id,
-            n.title,
-            n.content,
-            n.sender_name,
-            n.sender_type,
-            n.target_grade,
-            n.target_subject,
-            n.created_at,
-
-            COALESCE(r.is_read, FALSE) AS is_read
-        FROM notifications n
-        LEFT JOIN notification_reads r
-            ON r.notification_id = n.id
-            AND r.user_id = :user_id
-        WHERE
-            -- Direct learner notifications
-            n.target_user_id = :user_id
-
-            -- Grade-wide notifications
-            OR (n.target_user_id IS NULL AND n.target_grade = :grade AND n.target_subject IS NULL)
-
-            -- Grade + subject notifications
-            OR (n.target_user_id IS NULL AND n.target_grade = :grade AND n.target_subject = :subject)
-
-            -- Global notifications
-            OR (n.target_user_id IS NULL AND n.target_grade IS NULL AND n.target_subject IS NULL)
-        ORDER BY n.created_at DESC
-    """)
-
-    result = db.execute(
-        query,
-        {
-            "user_id": user_id,
-            "grade": current_user.get("grade")
-        }
-    ).mappings().all()
-
-    return result
 
 @router.post("/notifications/{notification_id}/read")
 def mark_notification_read(
@@ -435,81 +375,447 @@ def create_application(
         "submitted_at": submitted_at
     }
 
-@router.post("/applications/save-draft")
-def save_draft(
-    payload: dict = Body(...),
+
+def get_learner_subjects(db: Session, user_id: int) -> dict:
+    row = db.execute(
+        text("""
+            SELECT data FROM applications
+            WHERE user_id = :uid
+            ORDER BY created_at DESC
+            LIMIT 1
+        """),
+        {"uid": user_id}
+    ).fetchone()
+
+    if not row or not row.data:
+        return {}
+
+    data = json.loads(row.data) if isinstance(row.data, str) else row.data
+    return data.get("subjects", {})
+
+
+def is_term_open(db: Session, term: int) -> bool:
+    row = db.execute(
+        text("SELECT is_open FROM term_settings WHERE term = :t"),
+        {"t": term}
+    ).fetchone()
+
+    return bool(row and row.is_open)
+
+
+def save_report_file(file: UploadFile, user_id: int, term: int) -> str:
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF allowed")
+
+    contents = file.file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Max file size is 5MB")
+
+    folder = os.path.join(
+        UPLOAD_DIR,
+        "term_reports",
+        f"term{term}"
+    )
+
+    os.makedirs(folder, exist_ok=True)
+
+    filename = f"{user_id}_report.pdf"
+    path = os.path.join(folder, filename)
+
+    with open(path, "wb") as f:
+        f.write(contents)
+
+    # return relative path for DB
+    return f"term_reports/term{term}/{filename}"
+
+@router.get("/term-marks/{term}")
+def get_term_marks(
+    term: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can view term marks")
+
+    user_id = int(current_user["sub"])
+
+    subjects = get_learner_subjects(db, user_id)
+
+    row = db.execute(
+        text("""
+            SELECT marks, report_path
+            FROM learner_term_marks
+            WHERE user_id = :uid AND term = :term
+        """),
+        {"uid": user_id, "term": term}
+    ).fetchone()
+
+    report_url = None
+    if row and row.report_path:
+        # Build full public URL
+        report_url = f"{BASE_URL}/uploads/learner_documents/{row.report_path}" if row and row.report_path else None
+
+    return {
+        "term": term,
+        "is_open": is_term_open(db, term),
+        "subjects": subjects,
+        "marks": row.marks if row else {},
+        "report": report_url
+    }
+
+
+@router.post("/term-marks/{term}")
+async def update_term_marks(
+    term: int,
+    marks: str = Body(..., embed=True),   # frontend sends "marks" as JSON string
+    report: UploadFile = File(None),       # optional PDF
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    user_id = current_user["sub"]
-    grade = payload.get("grade")
-    math_type = payload.get("math_type")
-    form_data = payload.get("formData", {})
+    if current_user["role"] != "Learner":
+        raise HTTPException(status_code=403, detail="Only learners can update marks")
 
-    if not grade or not math_type or not form_data:
-        raise HTTPException(status_code=400, detail="Missing required fields")
+    user_id = int(current_user["sub"])
 
-    current_year = datetime.now().year
+    # Term must be open
+    if not is_term_open(db, term):
+        raise HTTPException(status_code=403, detail="This term is closed for updates")
 
-    # Check if draft already exists for this year
-    existing_draft = db.execute(
-        text("""
-            SELECT app_id FROM applications 
-            WHERE user_id = :user_id 
-            AND year = :year 
-            AND status = 'Draft'
-            LIMIT 1
-        """),
-        {"user_id": user_id, "year": current_year}
-    ).fetchone()
+    # Parse marks JSON
+    try:
+        marks_dict = json.loads(marks)
+        if not isinstance(marks_dict, dict):
+            raise ValueError("Marks must be a dictionary")
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid marks format: {str(e)}")
 
-    if existing_draft:
-        app_id = existing_draft[0]
-        # Update existing draft
-        db.execute(
-            text("""
-                UPDATE applications 
-                SET 
-                    math_type = :math_type,
-                    grade = :grade,
-                    data = :data,
-                    updated_at = NOW()
-                WHERE app_id = :app_id
-            """),
-            {
-                "math_type": math_type,
-                "grade": grade,
-                "data": json.dumps(form_data),
-                "app_id": app_id
-            }
-        )
-    else:
-        # Create new draft
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        app_id = f"DRAFT-{user_id}-{timestamp}"
+    # Optional: basic mark validation
+    for subject, score in marks_dict.items():
+        try:
+            val = float(score)
+            if not (0 <= val <= 100):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail=f"Invalid mark for {subject}: must be 0-100")
 
-        db.execute(
-            text("""
-                INSERT INTO applications (
-                    app_id, user_id, year, status, math_type, grade, data, created_at, updated_at
-                ) VALUES (
-                    :app_id, :user_id, :year, 'Draft', :math_type, :grade, :data, NOW(), NOW()
-                )
-            """),
-            {
-                "app_id": app_id,
-                "user_id": user_id,
-                "year": current_year,
-                "math_type": math_type,
-                "grade": grade,
-                "data": json.dumps(form_data)
-            }
-        )
+    # Handle optional report upload
+    report_path = None
+    if report:
+        report_path = save_report_file(report, user_id, term)
+
+    # Upsert into learner_term_marks (insert or update)
+    db.execute(text("""
+        INSERT INTO learner_term_marks (user_id, term, marks, report_path, updated_at)
+        VALUES (:user_id, :term, :marks, :report_path, NOW())
+        ON DUPLICATE KEY UPDATE 
+            marks = :marks,
+            report_path = COALESCE(:report_path, report_path),
+            updated_at = NOW()
+    """), {
+        "user_id": user_id,
+        "term": term,
+        "marks": json.dumps(marks_dict),
+        "report_path": report_path
+    })
 
     db.commit()
 
     return {
         "success": True,
-        "message": "Draft saved",
-        "app_id": app_id
+        "message": "Term marks updated successfully",
+        "report_path": report_path
     }
+
+@router.post("/term-marks/{term}/replace-report")
+async def replace_term_report(
+    term: int,
+    report: UploadFile = File(...),  # must provide new file
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can replace reports")
+
+    user_id = int(current_user["sub"])
+
+    # Term must be open
+    if not is_term_open(db, term):
+        raise HTTPException(403, "This term is closed for updates")
+
+    # Get current report path (to delete old file)
+    current_row = db.execute(
+        text("""
+            SELECT report_path FROM learner_term_marks 
+            WHERE user_id = :uid AND term = :term
+        """),
+        {"uid": user_id, "term": term}
+    ).fetchone()
+
+    old_path = current_row.report_path if current_row else None
+
+    # Save new file
+    new_path = save_report_file(report, user_id, term)
+
+    # Delete old file if exists and different
+    if old_path and old_path != new_path:
+        import os
+        full_old_path = os.path.join(UPLOAD_DIR, old_path)
+        if os.path.exists(full_old_path):
+            try:
+                os.remove(full_old_path)
+            except Exception as e:
+                print(f"Failed to delete old report {old_path}: {e}")
+
+    # Update DB (only report_path)
+    db.execute(text("""
+        INSERT INTO learner_term_marks (user_id, term, marks, report_path, updated_at)
+        VALUES (:user_id, :term, '{}', :report_path, NOW())
+        ON DUPLICATE KEY UPDATE 
+            report_path = :report_path,
+            updated_at = NOW()
+    """), {
+        "user_id": user_id,
+        "term": term,
+        "report_path": new_path
+    })
+
+    db.commit()
+
+    # Return full public URL
+    base_url = "http://localhost:8000"  # ← use your config BASE_URL
+    full_url = f"{base_url}/uploads/{new_path}"
+
+    return {
+        "success": True,
+        "message": "Report replaced successfully",
+        "report": full_url
+    }
+
+
+#Reviews
+class ReviewCreate(BaseModel):
+    staff_id: int = Field(..., gt=0)  # staff.id (teacher/tutor)
+    subject: str = Field(..., min_length=1)
+    rating: float = Field(..., ge=1, le=5)
+    comment: str | None = None
+
+# Check if reviews are open (hardcoded for now, later from DB)
+def are_reviews_open(db: Session) -> bool:
+    row = db.execute(text("SELECT is_open FROM review_settings WHERE id = 1")).fetchone()
+    return row.is_open if row else True  # default open
+
+@router.get("/teacher-review-options")
+def get_review_options(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can access review options")
+
+    # Get active teachers/tutors (role = 'Teacher' or 'Tutor')
+    query = text("""
+        SELECT 
+            id AS staff_id,
+            nickname,
+            CONCAT(names, ' ', surname) AS full_name,
+            subjects,
+            role
+        FROM staff
+        WHERE role IN ('Teacher', 'Tutor')
+          AND status = 'Active'
+        ORDER BY full_name
+    """)
+    staff_rows = db.execute(query).fetchall()
+
+    # Parse subjects (handle "Both A and B", comma-separated, etc.)
+    teachers = []
+    for row in staff_rows:
+        subjects_raw = row.subjects or ""
+        # Simple split - improve parsing if needed
+        subjects_list = [
+            s.strip() 
+            for s in subjects_raw.replace("Both ", "").replace(" and ", ", ").split(",")
+            if s.strip()
+        ]
+        teachers.append({
+            "staff_id": row.staff_id,
+            "full_name": f"{row.full_name} ({row.nickname if row.nickname else row.role})",
+            "subjects": subjects_list
+        })
+
+    return {
+        "reviews_open": are_reviews_open(db),
+        "teachers": teachers
+    }
+
+@router.post("/teacher-reviews")
+def submit_review(
+    review: ReviewCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can submit reviews")
+
+    if not are_reviews_open(db):
+        raise HTTPException(403, "Reviews are currently closed")
+
+    learner_id = int(current_user["sub"])
+
+    # Validate staff exists and is teacher/tutor
+    staff_check = db.execute(text("""
+        SELECT 1 FROM staff 
+        WHERE id = :sid AND role IN ('Teacher', 'Tutor') AND status = 'Active'
+    """), {"sid": review.staff_id}).fetchone()
+
+    if not staff_check:
+        raise HTTPException(400, "Invalid or inactive teacher/tutor")
+
+    # Check if already reviewed this staff + subject
+    existing = db.execute(text("""
+        SELECT 1 FROM teacher_reviews 
+        WHERE learner_id = :lid 
+          AND staff_id = :sid 
+          AND subject = :subject
+    """), {
+        "lid": learner_id,
+        "sid": review.staff_id,
+        "subject": review.subject
+    }).fetchone()
+
+    if existing:
+        raise HTTPException(400, "You have already reviewed this teacher/tutor for this subject")
+
+    # Insert
+    db.execute(text("""
+        INSERT INTO teacher_reviews 
+        (learner_id, staff_id, subject, rating, comment)
+        VALUES (:lid, :sid, :subject, :rating, :comment)
+    """), {
+        "lid": learner_id,
+        "sid": review.staff_id,
+        "subject": review.subject,
+        "rating": review.rating,
+        "comment": review.comment
+    })
+
+    db.commit()
+
+    return {"success": True, "message": "Review submitted successfully"}
+
+@router.get("/teacher-reviews")
+def get_my_reviews(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can view their reviews")
+
+    learner_id = int(current_user["sub"])
+
+    query = text("""
+        SELECT 
+            r.review_id,
+            CONCAT(s.names, ' ', s.surname) AS teacher,
+            CONCAT(
+                s.names, ' ', s.surname,
+                ' (',
+                COALESCE(NULLIF(s.nickname, ''), s.role),
+                ')'
+            ) AS display_name,
+            r.subject,
+            r.rating,
+            r.comment,
+            r.created_at
+        FROM teacher_reviews r
+        JOIN staff s ON r.staff_id = s.id
+        WHERE r.learner_id = :lid
+        ORDER BY r.created_at DESC
+    """)
+
+    results = db.execute(query, {"lid": learner_id}).fetchall()
+
+    return [
+        {
+            "id": row.review_id,
+            "teacher": row.display_name,
+            "subject": row.subject,
+            "rating": float(row.rating),
+            "comment": row.comment or "",
+            "date": row.created_at.strftime("%Y-%m-%d")
+        }
+        for row in results
+    ]
+
+#wARNINGS
+
+@router.get("/warnings")
+def get_learner_warnings(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403, "Only learners can view warnings")
+
+    learner_id = int(current_user["sub"])
+
+    query = text("""
+        SELECT 
+            id,
+            warning_type AS type,
+            reason,
+            severity,
+            issued_at AS date,
+            status
+        FROM learner_warnings
+        WHERE learner_id = :learner_id
+          AND status = 'Active'
+        ORDER BY issued_at DESC
+    """)
+    results = db.execute(query, {"learner_id": learner_id}).fetchall()
+
+    warnings = [
+        {
+            "id": row.id,
+            "type": row.type,
+            "reason": row.reason,
+            "severity": row.severity,
+            "date": row.date.strftime("%Y-%m-%d"),
+            "status": row.status
+        }
+        for row in results
+    ]
+
+    return warnings
+
+@router.post("/warnings/{warning_id}/acknowledge")
+def acknowledge_warning(
+    warning_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Learner":
+        raise HTTPException(403)
+
+    learner_id = int(current_user["sub"])
+
+    # Check ownership and active status
+    check = db.execute(text("""
+        SELECT 1 FROM learner_warnings 
+        WHERE id = :wid AND learner_id = :lid AND status = 'Active'
+    """), {"wid": warning_id, "lid": learner_id}).fetchone()
+
+    if not check:
+        raise HTTPException(404, "Warning not found or already acknowledged")
+
+    db.execute(text("""
+        UPDATE learner_warnings 
+        SET status = 'Acknowledged', acknowledged_at = NOW()
+        WHERE id = :wid
+    """), {"wid": warning_id})
+
+    db.commit()
+
+    return {"success": True, "message": "Warning acknowledged"}
+
+

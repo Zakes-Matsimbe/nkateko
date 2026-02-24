@@ -16,9 +16,9 @@ const Footer = ({ sidebarIsClosed }) => {
     >
       <div className="container-fluid px-3 px-md-5">
         <p className="text-muted mb-0">
-          © {year} Zakes Matsimbe. All rights reserved. | 
+          © {year} Zakes Matsimbe. All rights reserved.<br></br> | 
           <a href="#" className="text-primary mx-2">Privacy Policy</a> | 
-          <a href="#" className="text-primary">Terms of Service</a>
+          <a href="#" className="text-primary"> Terms of Service</a> |
         </p>
       </div>
     </footer>

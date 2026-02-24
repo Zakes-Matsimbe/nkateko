@@ -1,6 +1,7 @@
 # app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .auth.routes import router as auth_router
 from .learner.routes import router as learner_router
 
@@ -24,6 +25,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router)
 app.include_router(learner_router)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/")
 def root():

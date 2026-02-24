@@ -4,6 +4,7 @@ import api from '../../lib/api';
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -23,25 +24,66 @@ const Notifications = () => {
     }
   };
 
-  const markAsRead = async (notificationId) => {
-    try {
-      await api.post(`/api/learner/notifications/${notificationId}/read`);
+  const handleToggle = async (notification) => {
+    const isOpening = expandedId !== notification.id;
+    setExpandedId(isOpening ? notification.id : null);
 
-      // Optimistic UI update
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, is_read: true } : n
-        )
-      );
-    } catch (err) {
-      console.error('Failed to mark as read', err);
+    if (isOpening && !notification.is_read) {
+      try {
+        await api.post(`/api/learner/notifications/${notification.id}/read`);
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id ? { ...n, is_read: true } : n
+          )
+        );
+      } catch (err) {
+        console.error('Failed to mark as read', err);
+      }
     }
   };
+
+  /* =========================
+     GROUPING LOGIC
+     ========================= */
+
+  const groupByDate = (items) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const groups = {
+      Earlier: [],
+      Yesterday: [],
+      Today: [],
+    };
+
+    items.forEach((n) => {
+      if (!n.created_at) {
+        groups.Earlier.push(n);
+        return;
+      }
+
+      const date = new Date(n.created_at);
+      const dateOnly = date.toDateString();
+
+      if (dateOnly === today.toDateString()) {
+        groups.Today.push(n);
+      } else if (dateOnly === yesterday.toDateString()) {
+        groups.Yesterday.push(n);
+      } else {
+        groups.Earlier.push(n);
+      }
+    });
+
+    return groups;
+  };
+
+  const grouped = groupByDate(notifications);
 
   if (loading) {
     return (
       <div className="text-center py-5">
-        <div className="spinner-border text-primary" role="status" />
+        <div className="spinner-border text-primary" />
       </div>
     );
   }
@@ -54,46 +96,81 @@ const Notifications = () => {
     <div className="py-4">
       <h2 className="mb-4 fw-bold">Notifications</h2>
 
-      {notifications.length > 0 ? (
-        <ol className="list-group shadow-sm rounded">
-          {notifications.map((n) => (
-            <li
-              key={n.id}
-              className={`list-group-item d-flex justify-content-between align-items-start
-                ${!n.is_read ? 'list-group-item-warning' : ''}`}
-              style={{ cursor: 'pointer' }}
-              onClick={() => !n.is_read && markAsRead(n.id)}
-            >
-              <div className="ms-2 me-auto">
-                <div className="fw-bold">{n.title || 'Notification'}</div>
-
-                <p className="mb-1">{n.content || 'No content available'}</p>
-
-                <small className="text-muted d-block">
-                  From {n.sender_name} ({n.sender_type})
-                </small>
-
-                <small className="text-muted">
-                  {n.created_at
-                    ? new Date(n.created_at).toLocaleString()
-                    : 'No date'}
-                </small>
-              </div>
-
-              <span
-                className={`badge rounded-pill align-self-center
-                  ${n.is_read ? 'bg-success' : 'bg-warning text-dark'}`}
-              >
-                {n.is_read ? 'Read' : 'Unread'}
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : (
+      {notifications.length === 0 && (
         <div className="alert alert-info text-center py-5">
           No notifications at the moment
         </div>
       )}
+
+      {/* ORDER: Earlier → Yesterday → Today */}
+      {['Earlier', 'Yesterday', 'Today'].map(group => (
+        grouped[group].length > 0 && (
+          <div key={group} className="mb-4">
+            <h6 className="text-uppercase text-muted fw-bold mb-2">
+              {group}
+            </h6>
+
+            <ul className="list-group shadow-sm rounded">
+              {grouped[group].map(n => {
+                const isExpanded = expandedId === n.id;
+
+                return (
+                        <li
+                          key={n.id}
+                          className={`list-group-item mb-2 rounded-3 border
+                            ${!n.is_read ? 'list-group-item-warning' : ''}
+                            ${expandedId === n.id ? 'border-primary shadow-sm' : ''}
+                          `}
+                          style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                          onClick={() =>
+                            setExpandedId(expandedId === n.id ? null : n.id)
+                          }
+                        >
+
+                    {/* Header */}
+                    <div
+                      className="d-flex justify-content-between align-items-center"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => handleToggle(n)}
+                    >
+                      <div>
+                        <div className="fw-bold">
+                          {n.title || 'Notification'}
+                        </div>
+                        <small className="text-muted">
+                          From {n.sender_name} ({n.sender_type})
+                        </small>
+                      </div>
+
+                      <span
+                        className={`badge rounded-pill ${
+                          n.is_read
+                            ? 'bg-success'
+                            : 'bg-warning text-dark'
+                        }`}
+                      >
+                        {n.is_read ? 'Read' : 'Unread'}
+                      </span>
+                    </div>
+
+                    {/* Expanded body */}
+                    {isExpanded && (
+                      <div className="mt-3 border-top pt-3">
+                        <p className="mb-2">
+                          {n.content || 'No content available'}
+                        </p>
+                        <small className="text-muted">
+                          Date : {new Date(n.created_at).toLocaleString()}
+                        </small>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )
+      ))}
     </div>
   );
 };

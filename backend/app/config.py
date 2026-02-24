@@ -19,6 +19,7 @@ DATABASE_URL = (
     f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 UPLOAD_DIR = "uploads/learner_documents"  # relative to project root
+BASE_URL = "http://localhost:8000"  # change to https://yourdomain.com in production
 
 # JWT
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-to-a-very-long-random-string")

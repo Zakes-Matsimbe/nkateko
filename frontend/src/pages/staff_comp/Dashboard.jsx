@@ -30,33 +30,7 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
-  useEffect(() => {
-  const fetchProfile = async () => {
-    try {
-      const res = await api.get('/api/learner/profile');
-      const profileData = res.data;
-
-      // Set global in auth store
-      useAuthStore.setState(prev => ({
-        user: {
-          ...prev.user,
-          grade: profileData.grade,
-          bokamoso_number: profileData.bokamoso_number,
-          // add any other fields you need globally
-        }
-      }));
-
-      // Optional: save to localStorage for persistence
-      localStorage.setItem('learnerProfile', JSON.stringify(profileData));
-    } catch (err) {
-      console.error('Profile fetch failed', err);
-    }
-  };
-
-  fetchProfile();
-}, []);
-
-  
+  // Your grouping and comment functions go here (copy from previous)
     // Group by month for summary
   const groupedAttendance = rawAttendance.reduce((acc, item) => {
     const month = new Date(item.class_date).toLocaleString('default', { month: 'long', year: 'numeric' });

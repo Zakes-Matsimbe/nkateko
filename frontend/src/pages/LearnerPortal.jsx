@@ -132,9 +132,9 @@ function LearnerPortal() {
                 </button>
               </li>
               <li className="nav-item">
-                <button className={`nav-link w-100 text-start ${activeTab === 'applications' ? 'active' : ''}`} onClick={() => setActiveTab('applications')}>
-                  <i className="bi bi-file-earmark-plus me-2"></i>
-                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Applications</span>
+                <button className={`nav-link w-100 text-start ${activeTab === 'warnings' ? 'active' : ''}`} onClick={() => setActiveTab('warnings')}>
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Warnings</span>
                 </button>
               </li>
               <li className="nav-item">
@@ -149,10 +149,10 @@ function LearnerPortal() {
                   <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Teacher Reviews</span>
                 </button>
               </li>
-              <li className="nav-item">
-                <button className={`nav-link w-100 text-start ${activeTab === 'warnings' ? 'active' : ''}`} onClick={() => setActiveTab('warnings')}>
-                  <i className="bi bi-exclamation-triangle me-2"></i>
-                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Warnings</span>
+                <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'applications' ? 'active' : ''}`} onClick={() => setActiveTab('applications')}>
+                  <i className="bi bi-file-earmark-plus me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Applications</span>
                 </button>
               </li>
               <li className="nav-item mt-5">

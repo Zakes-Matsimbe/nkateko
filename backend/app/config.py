@@ -18,7 +18,7 @@ DATABASE_URL = (
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}"
     f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
-
+UPLOAD_DIR = "uploads/learner_documents"  # relative to project root
 
 # JWT
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-to-a-very-long-random-string")

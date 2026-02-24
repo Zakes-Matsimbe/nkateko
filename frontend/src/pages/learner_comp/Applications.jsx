@@ -8,6 +8,7 @@ const Applications = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -24,6 +25,36 @@ const Applications = () => {
 
     fetchData();
   }, []);
+
+  // ← NEW: Check if user can submit a new application
+  const canSubmitNew = () => {
+    if (applications.length === 0) return true;
+
+    const now = new Date();
+    const fiveMonthsAgo = new Date();
+    fiveMonthsAgo.setMonth(now.getMonth() - 5);
+
+    // Check any application created or submitted in last 5 months
+    return !applications.some(app => {
+      const created = new Date(app.created_at);
+      const submitted = app.date_submitted ? new Date(app.date_submitted) : null;
+
+      return (
+        created >= fiveMonthsAgo ||
+        (submitted && submitted >= fiveMonthsAgo)
+      );
+    });
+  };
+
+  // Handle click with check
+  const handleOpenModal = () => {
+    if (!canSubmitNew()) {
+        setShowBlockModal(true); // Show nice pop-up
+      return;
+    }
+
+    setShowModal(true);
+  };
 
   if (loading) {
     return (
@@ -210,23 +241,73 @@ const Applications = () => {
         </div>
       )}
 
-      {/* Submit New Application Button */}
-          <div className="text-center mt-5">
-            <button
-              className="btn btn-primary btn-lg px-5"
-              onClick={() => setShowModal(true)}
-            >
-              Submit New Application
-            </button>
-          </div>
+          {/* Submit New Application Button */}
+                <div className="text-center mt-5">
+                  <button
+                    className="btn btn-primary btn-lg px-5"
+                    onClick={handleOpenModal}  // ← changed to new handler
+                    disabled={loading}        // optional: disable while loading
+                  >
+                    {loading ? 'Loading...' : 'Submit New Application'}
+                  </button>
+                </div>
 
-          <ManageApplicationModal
-            show={showModal}
-            onHide={() => setShowModal(false)}
-            onSuccess={() => {
-              setShowModal(false);
-              fetchData(); // refresh list — use your actual fetch function name
-            }}
+
+                {/* Nice Block Pop-up */}
+                      <div
+                        className={`modal fade ${showBlockModal ? 'show d-block' : ''}`}
+                        tabIndex="-1"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+                        onClick={() => setShowBlockModal(false)}
+                      >
+                        <div className="modal-dialog modal-dialog-centered" onClick={e => e.stopPropagation()}>
+                          <div className="modal-content border-0 shadow-lg rounded-4">
+                            <div className="modal-header bg-warning text-dark">
+                              <h5 className="modal-title fw-bold">Cannot Create New Application</h5>
+                              <button
+                                type="button"
+                                className="btn-close"
+                                onClick={() => setShowBlockModal(false)}
+                              ></button>
+                            </div>
+                            <div className="modal-body text-center py-4">
+                              <i className="bi bi-exclamation-triangle-fill text-warning" style={{ fontSize: '3rem' }}></i>
+                              <p className="mt-3 fs-5 fw-medium">
+                                You are not allowed to create another application for this cycle.
+                              </p>
+                              <p className="text-muted">
+                                You can only apply once every 5 months.
+                              </p>
+                            </div>
+                            <div className="modal-footer justify-content-center border-0 pb-4">
+                              <button
+                                type="button"
+                                className="btn btn-warning btn-lg px-5"
+                                onClick={() => setShowBlockModal(false)}
+                              >
+                                OK
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                <ManageApplicationModal
+                  show={showModal}
+                  onHide={() => setShowModal(false)}
+                  onSuccess={() => {
+                    setShowModal(false);
+                    // Refresh applications list after success
+                    const fetchData = async () => {
+                      try {
+                        const res = await api.get('/api/learner/applications');
+                        setApplications(res.data);
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    };
+                    fetchData();
+                  }}
           />
 
 

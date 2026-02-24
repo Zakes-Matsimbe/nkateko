@@ -15,7 +15,33 @@ import json
 import random
 import string
 
+
 router = APIRouter(prefix="/api/learner", tags=["learner"])
+
+from sqlalchemy.orm import Session
+
+
+def get_learner_grade_from_db(
+    db: Session,
+    current_user: dict
+) -> int:
+    """
+    Fetch learner grade only (no User ORM).
+    Fast and safe for reuse.
+    """
+    user_id = current_user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    result = db.execute(
+        text("SELECT grade FROM users WHERE id = :id"),
+        {"id": int(user_id)}
+    ).scalar()
+
+    if result is None:
+        raise HTTPException(status_code=400, detail="Learner grade not set")
+
+    return int(result)
 
 @router.get("/profile")
 def get_profile(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -75,18 +101,119 @@ def get_attendance(db: Session = Depends(get_db), current_user: dict = Depends(g
 
 @router.get("/notifications")
 def get_notifications(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    query = text("""
+    user_id = current_user["sub"]
+    user_grade = db.execute(text("SELECT grade FROM users WHERE id = :user_id"), {"user_id": user_id}).fetchone()[0]
+
+    # Fetch specific notifications for user
+    specific_query = text("""
         SELECT 
-            title,
-            content,
-            is_read,
-            created_at
-        FROM notifications
-        WHERE user_id = :id
-        ORDER BY created_at DESC
+            n.id, n.title, n.content, n.created_at, 
+            COALESCE(nr.is_read, FALSE) as is_read,
+            n.sender_type, n.sender_name
+        FROM notifications n
+        LEFT JOIN notification_reads nr ON n.id = nr.notification_id AND nr.user_id = :user_id
+        WHERE n.target_user_id = :user_id
     """)
-    results = db.execute(query, {"id": current_user["sub"]}).fetchall()
-    return [dict(row._mapping) for row in results]
+    specific_results = db.execute(specific_query, {"user_id": user_id}).fetchall()
+
+    # Fetch grade-wide notifications (matching user's grade, optional subject)
+    grade_query = text("""
+        SELECT 
+            n.id, n.title, n.content, n.created_at, 
+            COALESCE(nr.is_read, FALSE) as is_read,
+            n.sender_type, n.sender_name
+        FROM notifications n
+        LEFT JOIN notification_reads nr ON n.id = nr.notification_id AND nr.user_id = :user_id
+        WHERE n.target_grade = :grade AND n.target_user_id IS NULL
+    """)
+    grade_results = db.execute(grade_query, {"user_id": user_id, "grade": user_grade}).fetchall()
+
+    # Combine and sort by created_at DESC
+    all_results = specific_results + grade_results
+    all_results.sort(key=lambda x: x.created_at, reverse=True)
+
+    # Convert to dicts
+    return [dict(row._mapping) for row in all_results]
+
+@router.get("/notificationss")
+def get_notifications(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    grade = get_learner_grade_from_db(db, current_user)
+    #user_id = int(current_user["sub"])
+
+    user_id = (
+        current_user.get("user_id")
+        or current_user.get("id")
+        or current_user.get("sub")
+    )
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user token")
+
+    query = text("""
+        SELECT
+            n.id,
+            n.title,
+            n.content,
+            n.sender_name,
+            n.sender_type,
+            n.target_grade,
+            n.target_subject,
+            n.created_at,
+
+            COALESCE(r.is_read, FALSE) AS is_read
+        FROM notifications n
+        LEFT JOIN notification_reads r
+            ON r.notification_id = n.id
+            AND r.user_id = :user_id
+        WHERE
+            -- Direct learner notifications
+            n.target_user_id = :user_id
+
+            -- Grade-wide notifications
+            OR (n.target_user_id IS NULL AND n.target_grade = :grade AND n.target_subject IS NULL)
+
+            -- Grade + subject notifications
+            OR (n.target_user_id IS NULL AND n.target_grade = :grade AND n.target_subject = :subject)
+
+            -- Global notifications
+            OR (n.target_user_id IS NULL AND n.target_grade IS NULL AND n.target_subject IS NULL)
+        ORDER BY n.created_at DESC
+    """)
+
+    result = db.execute(
+        query,
+        {
+            "user_id": user_id,
+            "grade": current_user.get("grade")
+        }
+    ).mappings().all()
+
+    return result
+
+@router.post("/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    stmt = text("""
+        INSERT INTO notification_reads (notification_id, user_id, is_read, read_at)
+        VALUES (:nid, :uid, TRUE, NOW())
+        ON DUPLICATE KEY UPDATE
+            is_read = TRUE,
+            read_at = NOW()
+    """)
+
+    db.execute(stmt, {
+        "nid": notification_id,
+        "uid": current_user["sub"]
+    })
+    db.commit()
+
+    return {"success": True}
 
 @router.get("/applications")
 def get_applications(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -306,4 +433,83 @@ def create_application(
         "message": "Application submitted successfully!",
         "app_id": app_id,
         "submitted_at": submitted_at
+    }
+
+@router.post("/applications/save-draft")
+def save_draft(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    user_id = current_user["sub"]
+    grade = payload.get("grade")
+    math_type = payload.get("math_type")
+    form_data = payload.get("formData", {})
+
+    if not grade or not math_type or not form_data:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
+    current_year = datetime.now().year
+
+    # Check if draft already exists for this year
+    existing_draft = db.execute(
+        text("""
+            SELECT app_id FROM applications 
+            WHERE user_id = :user_id 
+            AND year = :year 
+            AND status = 'Draft'
+            LIMIT 1
+        """),
+        {"user_id": user_id, "year": current_year}
+    ).fetchone()
+
+    if existing_draft:
+        app_id = existing_draft[0]
+        # Update existing draft
+        db.execute(
+            text("""
+                UPDATE applications 
+                SET 
+                    math_type = :math_type,
+                    grade = :grade,
+                    data = :data,
+                    updated_at = NOW()
+                WHERE app_id = :app_id
+            """),
+            {
+                "math_type": math_type,
+                "grade": grade,
+                "data": json.dumps(form_data),
+                "app_id": app_id
+            }
+        )
+    else:
+        # Create new draft
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        app_id = f"DRAFT-{user_id}-{timestamp}"
+
+        db.execute(
+            text("""
+                INSERT INTO applications (
+                    app_id, user_id, year, status, math_type, grade, data, created_at, updated_at
+                ) VALUES (
+                    :app_id, :user_id, :year, 'Draft', :math_type, :grade, :data, NOW(), NOW()
+                )
+            """),
+            {
+                "app_id": app_id,
+                "user_id": user_id,
+                "year": current_year,
+                "math_type": math_type,
+                "grade": grade,
+                "data": json.dumps(form_data)
+            }
+        )
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Draft saved",
+        "app_id": app_id
     }

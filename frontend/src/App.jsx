@@ -40,6 +40,7 @@ function App() {
         {/* Add staff & admin later */}
         <Route path="/staff" element={user ? <div>Staff Portal</div> : <Navigate to="/login" replace />} />
         <Route path="/admin" element={user ? <div>Admin Portal</div> : <Navigate to="/login" replace />} />
+        <Route path="/parent" element={user ? <div>Parent Portal</div> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

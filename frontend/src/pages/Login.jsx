@@ -35,6 +35,7 @@ function Login() {
     if (identifier.startsWith('ADM')) roleFromPrefix = 'Admin';
     else if (identifier.startsWith('BET')) roleFromPrefix = 'Staff';
     else if (identifier.startsWith('BOK')) roleFromPrefix = 'Learner';
+    else if (identifier.startsWith('PAR')) roleFromPrefix = 'Parent';
     else if (identifier.startsWith('OTH')) roleFromPrefix = 'Other';
 
     console.log("Sending:", { identifier, password, detected_role: roleFromPrefix });
@@ -62,6 +63,8 @@ function Login() {
         navigate('/staff', { replace: true });
       } else if (user.role === 'Admin') {
         navigate('/admin', { replace: true });
+      } else if (user.role === 'Parent') {
+        navigate('/parent', { replace: true });
       } else {
         setError('Unknown role returned from server');
       }

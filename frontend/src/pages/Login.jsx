@@ -22,6 +22,7 @@ function Login() {
     if (value.startsWith('ADM')) setDetectedRole('Admin');
     else if (value.startsWith('BET')) setDetectedRole('Staff');
     else if (value.startsWith('BOK')) setDetectedRole('Learner');
+    else if (value.startsWith('PAR')) setDetectedRole('Parent');
     else if (value.startsWith('OTH')) setDetectedRole('Other');
     else setDetectedRole('Unknown');
   };
@@ -114,8 +115,8 @@ function Login() {
                       type="text"
                       className="form-control form-control-lg"
                       value={identifier}
-                      onChange={handleIdentifierChange}
-                      placeholder="ADM12345, BET0001, BOK9999"
+                      onChange={handleIdentifierChange}Z
+                      placeholder="ADM12345, BET0001, BOK9999, PAR00001"
                       required
                     />
                     <div className="form-text mt-2">

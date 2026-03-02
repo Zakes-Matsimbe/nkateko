@@ -43,6 +43,21 @@ def login(
         password_field = "password"  # staff uses 'password'
         role_value_field = "role"   # string enum
 
+    elif upper_id.startswith('PAR'):
+            # Parent login using parent_ref from parents table
+            query = text("""
+                SELECT 
+                    p.id AS parent_id,
+                    CONCAT(p.parent_first_name, ' ', p.parent_surname) AS name,
+                    p.password,
+                    'Parent' AS role
+                FROM parents p
+                WHERE p.parent_ref = :id
+            """)
+            name_field = "name"
+            password_field = "password"  # parents use 'password'
+            role_value_field = "role"      # no role_id, hardcoded role
+
     elif upper_id.startswith('BOK'):
         query = text("""
             SELECT id, full_names AS name, password_hash, role_id 

@@ -40,3 +40,15 @@
 .read-the-docs {
   color: #888;
 }
+
+
+
+/* React Bootstrap modal click fix */
+.modal {
+  pointer-events: auto;
+  z-index: 1055;
+}
+
+.modal-backdrop {
+  pointer-events: none;
+}

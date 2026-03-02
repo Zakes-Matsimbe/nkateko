@@ -62,3 +62,19 @@ CREATE TABLE IF NOT EXISTS learner_warnings (
     FOREIGN KEY (created_by) REFERENCES staff(id) ON DELETE SET NULL,
     INDEX idx_learner_active (learner_id, status)
 );
+
+ALTER TABLE `parents`
+ADD COLUMN `parent_ref` VARCHAR(20) UNIQUE NULL,
+ADD COLUMN `password` VARCHAR(255) NULL;
+
+CREATE TABLE IF NOT EXISTS `apologies` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `parent_id` INT NOT NULL,
+  `learner_id` INT NOT NULL,
+  `title` VARCHAR(100) NOT NULL,
+  `message` TEXT NOT NULL,
+  `absence_date` DATE NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`parent_id`) REFERENCES `parents`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`learner_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+);

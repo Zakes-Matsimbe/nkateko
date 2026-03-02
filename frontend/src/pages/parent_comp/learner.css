@@ -1,0 +1,27 @@
+/* src/pages/learner_comp/learner.css */
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+.collapsed {
+  width: 80px !important;
+}
+
+.collapsed .d-none.d-lg-inline {
+  display: none !important;
+}
+
+.shadow-top {
+  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 991px) {
+  .navbar-brand {
+    font-size: 0.75rem !important;
+  }
+
+}
+
+main > div {
+  max-width: 100% !important;
+}

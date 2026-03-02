@@ -62,7 +62,7 @@ def get_profile(db: Session = Depends(get_db), current_user: dict = Depends(get_
     if not result:
         raise HTTPException(status_code=404, detail="Learner profile not found")
     
-    # Convert row to dict using _mapping
+    # # Convert row to dict using _mapping
     return dict(result._mapping)
 
 @router.get("/assessments")
@@ -582,7 +582,7 @@ async def replace_term_report(
     db.commit()
 
     # Return full public URL
-    base_url = "http://localhost:8000"  # ← use your config BASE_URL
+    base_url = BASE_URL  # ← use your config BASE_URL
     full_url = f"{base_url}/uploads/{new_path}"
 
     return {

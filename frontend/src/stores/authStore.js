@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 const useAuthStore = create((set) => ({
   user: undefined, // ← Start as undefined (loading state)
+  setUser: (userData) => set({ user: userData }),
   theme: localStorage.getItem('nkatekoTheme') || 'light',
 
   initAuth: () => {

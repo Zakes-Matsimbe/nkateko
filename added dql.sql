@@ -81,3 +81,29 @@ CREATE TABLE IF NOT EXISTS `apologies` (
 
 ALTER TABLE `staff`
 ADD COLUMN `grades` TEXT NULL DEFAULT NULL;
+
+
+-- Staff notifications (if you don't have it)
+CREATE TABLE IF NOT EXISTS `staff_notifications` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `staff_id` INT NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `content` TEXT NOT NULL,
+  `is_read` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
+);
+
+-- Example: insert a test notification
+INSERT INTO staff_notifications (staff_id, title, content) 
+VALUES (1, 'Welcome!', 'Your account is now active.');
+
+
+ALTER TABLE `staff`
+ADD COLUMN `hourly_rate` DECIMAL(10,2) NOT NULL DEFAULT 41.67 
+AFTER `tax_number`;  -- or wherever you want to place it
+
+UPDATE staff SET subjects = 'Mathematics,Physical Sciences' WHERE subjects LIKE '%Both Mathematics and Physical Sciences%';
+UPDATE staff SET subjects = 'Mathematics' WHERE subjects = 'Mathematics';
+UPDATE staff SET subjects = 'Physical Sciences' WHERE subjects = 'Physical Sciences';
+-- etc. for others

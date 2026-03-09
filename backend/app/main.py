@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth.routes import router as auth_router
 from .learner.routes import router as learner_router
 from .parent.routes  import router as parent_router
+from .staff.routes import router as staff_router
 
 app = FastAPI(title="Nkateko API")
 
@@ -27,6 +28,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(learner_router)
 app.include_router(parent_router)
+app.include_router(staff_router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/")

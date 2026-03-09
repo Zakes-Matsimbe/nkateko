@@ -1,232 +1,182 @@
-// src/pages/learner_comp/Dashboard.jsx
+// src/pages/staff_comp/Dashboard.jsx
 import { useState, useEffect } from 'react';
-import useAuthStore from '../../stores/authStore';
 import api from '../../lib/api';
+import useAuthStore from '../../stores/authStore';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
   const [profile, setProfile] = useState(null);
-  const [rawAssessments, setRawAssessments] = useState([]);
-  const [rawAttendance, setRawAttendance] = useState([]);
+  const [currentMonthHours, setCurrentMonthHours] = useState(0);
+  const [estimatedPay, setEstimatedPay] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [p, a, at] = await Promise.all([
-          api.get('/api/learner/profile'),
-          api.get('/api/learner/assessments'),
-          api.get('/api/learner/attendance'),
+        const [profileRes, timesheetsRes, notificationsRes] = await Promise.all([
+          api.get('/api/staff/profile'),
+          api.get('/api/staff/timesheets', { params: { year: new Date().getFullYear(), month: new Date().getMonth() + 1 } }),
+          api.get('/api/staff/notifications'),
         ]);
-        setProfile(p.data);
-        setRawAssessments(a.data);
-        setRawAttendance(at.data);
+
+        const profileData = profileRes.data;
+        setProfile(profileData);
+
+        const hours = timesheetsRes.data.total_hours || 0;
+        setCurrentMonthHours(hours.toFixed(1));
+
+        // Use real hourly rate from profile (fallback to 250 if missing)
+        const rate = profileData.hourly_rate || 250;
+        setEstimatedPay((hours * rate).toFixed(2));
+
+        setNotifications(notificationsRes.data.slice(0, 5) || []);
+
+        // Placeholder projects (replace with real fetch later)
+        setProjects([
+          { name: 'Grade 11 Math Revision', status: 'Ongoing', due: '2026-03-15' },
+          { name: 'Physics Lab Prep', status: 'Pending', due: '2026-03-20' },
+        ]);
       } catch (err) {
+        setError('Failed to load dashboard data');
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
+
     fetchData();
   }, []);
 
-  useEffect(() => {
-  const fetchProfile = async () => {
-    try {
-      const res = await api.get('/api/learner/profile');
-      const profileData = res.data;
+  if (loading) {
+    return (
+      <div className="text-center py-5">
+        <div className="spinner-border text-primary" role="status" style={{ width: '4rem', height: '4rem' }} />
+      </div>
+    );
+  }
 
-      // Set global in auth store
-      useAuthStore.setState(prev => ({
-        user: {
-          ...prev.user,
-          grade: profileData.grade,
-          bokamoso_number: profileData.bokamoso_number,
-          // add any other fields you need globally
-        }
-      }));
-
-      // Optional: save to localStorage for persistence
-      localStorage.setItem('learnerProfile', JSON.stringify(profileData));
-    } catch (err) {
-      console.error('Profile fetch failed', err);
-    }
-  };
-
-  fetchProfile();
-}, []);
-
-  
-    // Group by month for summary
-  const groupedAttendance = rawAttendance.reduce((acc, item) => {
-    const month = new Date(item.class_date).toLocaleString('default', { month: 'long', year: 'numeric' });
-    if (!acc[month]) {
-      acc[month] = { total_days: 0, attended: 0 };
-    }
-    acc[month].total_days += 1;
-    if (item.status === 'Attended') acc[month].attended += 1;
-    return acc;
-  }, {});
-
-  const getAttendanceComment = (perc) => {
-    if (perc < 60) return 'Bad';
-    if (perc < 75) return 'Be careful';
-    if (perc < 85) return 'Not so well';
-    return 'Good';
-  };
-
-
-  // Group by month + subject for summary
-  const groupedAssessments = rawAssessments.reduce((acc, item) => {
-    const month = new Date(item.date_written).toLocaleString('default', { month: 'long', year: 'numeric' });
-    const subject = item.subject;
-    const key = `${month} - ${subject}`;
-    if (!acc[key]) {
-      acc[key] = { month, subject, marks: [] };
-    }
-    acc[key].marks.push(parseFloat(item.mark));
-    return acc;
-  }, {});
-
-  const getAssessmentComment = (avg) => {
-    if (avg < 60) return 'Not doing well';
-    if (avg < 70) return 'Trying';
-    if (avg < 85) return 'Good';
-    return 'Excellent';
-  };
-
-  const getOutcome = (perc) => {
-    if (perc < 45) return 'Failed';
-    if (perc < 60) return 'Below expectation';
-    if (perc < 85) return 'Passed';
-    return 'Excellent';
-  };
-
-  if (loading) return <div className="text-center py-5"><div className="spinner-border"></div></div>;
+  if (error) {
+    return (
+      <div className="alert alert-danger text-center py-5 shadow rounded-4">
+        {error}
+      </div>
+    );
+  }
 
   return (
-    <div >
-      <h2 className="mb-5 fw-bold text-center">Dashboard</h2>
+    <>
+      <div className="py-4">
+        <h2 className="mb-5 fw-bold text-center text-primary">Staff Dashboard</h2>
 
-      {/* Profile */}
-      <div className="card shadow-lg border-0 rounded-4 mb-5">
-        <div className="card-body text-center p-5">
-          <i className="bi bi-person-circle display-1 text-primary mb-4"></i>
-          <h2 className="mb-3 fw-bold">Hi, {profile?.name || 'Learner'}!</h2>
-          <p className="fs-5 text-muted mb-1">Bokamoso Number</p>
-          <p className="fs-4 fw-bold text-dark">{profile?.bokamoso_number || 'N/A'}</p>
-          {/* Other profile info */}
-        </div>
-      </div>
-
-      {/* Summaries */}
-      <div className="row g-4">
-        <div className="col-12 col-lg-6">
-          <div className="card shadow border-0 rounded-4 h-100">
-            <div className="card-body p-4 p-md-5">
-              <h4 className="mb-4 fw-bold">Attendance Summary</h4>
-              {/* Table */}
-
-      {/* Summary Table Attendance */}
-      <div className="card shadow border-0 rounded-4 overflow-hidden">
-        <div className="card-body p-4 p-md-5">
-          <h4 className="mb-4">Monthly Attendance Summary</h4>
-          <div className="table-responsive">
-            <table className="table table-striped table-hover">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Month</th>
-                  <th>Total Days</th>
-                  <th>Attended</th>
-                  <th>%</th>
-                  <th>Comment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(groupedAttendance).length > 0 ? (
-                  Object.entries(groupedAttendance).map(([month, data], i) => {
-                    const perc = (data.attended / data.total_days * 100).toFixed(0);
-                    return (
-                      <tr key={i}>
-                        <td>{i + 1}</td>
-                        <td>{month}</td>
-                        <td>{data.total_days}</td>
-                        <td>{data.attended}</td>
-                        <td>{perc}%</td>
-                        <td>{getAttendanceComment(perc)}</td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="6" className="text-center py-4">No summary data available</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {/* Profile Card */}
+        <div className="card shadow border-0 rounded-4 mb-5">
+          <div className="card-body p-5 text-center">
+            <i className="bi bi-person-circle display-1 text-primary mb-4"></i>
+            <h3 className="fw-bold mb-3">Hi, {profile?.name || user?.name || 'Staff'}!</h3>
+            <div className="d-flex flex-wrap justify-content-center gap-4 mt-3">
+              <div>
+                <small className="text-muted d-block">Your Assigned Role</small>
+                <strong>{profile?.role}</strong>
+              </div>
+              <div>
+                <small className="text-muted d-block">Your Assigned Subject(s)</small>
+                <strong>{profile?.subjects || '—'}</strong>
+              </div>
+              <div>
+                <small className="text-muted d-block">Your Assigned Grade(s)</small>
+                <strong>{profile?.grades || '—'}</strong>
+              </div>
+              <div>
+                <small className="text-muted d-block">Your Hourly Rate</small>
+                <strong>R{profile?.hourly_rate?.toFixed(2) || '41.67'}</strong>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
+        {/* Quick Stats */}
+        <div className="row g-4 mb-5">
+          <div className="col-md-6">
+            <div className="card shadow border-0 rounded-4 h-100 bg-gradient bg-opacity-10 bg-primary">
+              <div className="card-body p-5 text-center">
+                <h5 className="fw-bold mb-3">Current Month Hours</h5>
+                <div className="display-4 fw-bold text-primary">{currentMonthHours}</div>
+                <small className="text-muted">hours worked this month</small>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-md-6">
+            <div className="card shadow border-0 rounded-4 h-100 bg-gradient bg-opacity-10 bg-success">
+              <div className="card-body p-5 text-center">
+                <h5 className="fw-bold mb-3">Estimated Pay</h5>
+                <div className="display-4 fw-bold text-success">R{estimatedPay}</div>
+                <small className="text-muted">based on {profile?.hourly_rate ? `R${profile.hourly_rate.toFixed(2)}/hr` : 'R250/hr'}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+          {/* Latest Notifications */}
+          <div className="card shadow border-0 rounded-4 mb-5">
+            <div className="card-header bg-primary text-white fw-bold">
+              Latest Notifications
+            </div>
+            <div className="card-body">
+              {notifications.length > 0 ? (
+                <ul className="list-group list-group-flush">
+                  {notifications.map((n, i) => (
+                    <li key={i} className="list-group-item">
+                      <strong>{n.title}</strong>
+                      <p className="mb-1 small text-muted">{n.content?.substring(0, 120)}...</p>
+                      <small className="text-muted">{new Date(n.created_at).toLocaleString()}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted text-center my-4">No recent notifications</p>
+              )}
+            </div>
+          </div>
+
+          {/* Projects / Tasks */}
+          <div className="card shadow border-0 rounded-4">
+            <div className="card-header bg-info text-white fw-bold">
+              Ongoing Projects / Tasks
+            </div>
+            <div className="card-body">
+              {projects.length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>Project</th>
+                        <th>Status</th>
+                        <th>Due</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projects.map((p, i) => (
+                        <tr key={i}>
+                          <td>{p.name}</td>
+                          <td><span className={`badge bg-${p.status === 'Ongoing' ? 'warning' : 'secondary'}`}>{p.status}</span></td>
+                          <td>{p.due}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-muted text-center my-4">No ongoing projects</p>
+              )}
+            </div>
+          </div>
+        </div>
       
-
-
-            </div>
-          </div>
-        </div>
-        <div className="col-12 col-lg-6">
-          <div className="card shadow border-0 rounded-4 h-100">
-            <div className="card-body p-4 p-md-5">
-              <h4 className="mb-4 fw-bold">Assessments Summary</h4>
-              {/* Table */}
-
-      {/* Summary Table */}
-      <div className="card shadow border-0 rounded-4 overflow-hidden">
-        <div className="card-body p-4 p-md-5">
-          <h4 className="mb-4">Summary by Month & Subject</h4>
-          <div className="table-responsive">
-            <table className="table table-striped table-hover">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Month</th>
-                  <th>Subject</th>
-                  <th>Average</th>
-                  <th>Comment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.values(groupedAssessments).length > 0 ? (
-                  Object.values(groupedAssessments).map((item, i) => {
-                    const avg = item.marks.reduce((a, b) => a + b, 0) / item.marks.length;
-                    return (
-                      <tr key={i}>
-                        <td>{i + 1}</td>
-                        <td>{item.month}</td>
-                        <td>{item.subject}</td>
-                        <td>{avg.toFixed(0)}%</td>
-                        <td>{getAssessmentComment(avg)}</td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="text-center py-4">No summary data available</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 };
 

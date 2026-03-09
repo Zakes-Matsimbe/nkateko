@@ -484,6 +484,52 @@ def get_assessment_results(
     return results
 
 
+@router.get("/learners/{learner_id}")
+def get_learner_detail(
+    learner_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    staff_id = int(current_user["sub"])
+
+    # Permission check (staff assigned to learner's grade)
+    staff_grades = db.execute(text("SELECT grades FROM staff WHERE id = :sid"), {"sid": staff_id}).fetchone()[0]
+    learner_grade = db.execute(text("SELECT grade FROM users WHERE id = :lid"), {"lid": learner_id}).fetchone()[0]
+
+    if not learner_grade or (staff_grades != 'all' and str(learner_grade) not in staff_grades.split(',')):
+        raise HTTPException(403, "Not authorized to view this learner")
+
+    learner = db.execute(text("""
+        SELECT id, full_names, surname, school, grade
+        FROM users
+        WHERE id = :lid
+    """), {"lid": learner_id}).fetchone()
+
+    if not learner:
+        raise HTTPException(404, "Learner not found")
+
+    # Attendance (current year)
+    attendance = db.execute(text("""
+        SELECT class_date, status
+        FROM attendance_classes
+        WHERE user_id = :lid AND YEAR(class_date) = YEAR(CURDATE())
+        ORDER BY class_date DESC
+    """), {"lid": learner_id}).fetchall()
+
+    # Assessments (current year)
+    assessments = db.execute(text("""
+        SELECT a.name, a.subject, a.date_written, am.percentage
+        FROM assessments a
+        JOIN assessment_marks am ON a.id = am.assessment_id
+        WHERE am.learner_id = :lid AND YEAR(a.date_written) = YEAR(CURDATE())
+        ORDER BY a.date_written DESC
+    """), {"lid": learner_id}).fetchall()
+
+    return {
+        "learner": dict(learner._mapping),
+        "attendance": [dict(row._mapping) for row in attendance],
+        "assessments": [dict(row._mapping) for row in assessments]
+    }
 
 
 

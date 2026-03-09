@@ -11,6 +11,7 @@ const ViewResults = () => {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false); // ← new: track if user clicked "Load"
 
   // Fetch profile (grades & subjects)
   useEffect(() => {
@@ -40,18 +41,19 @@ const ViewResults = () => {
     if (!grade || !subject || !month) {
       setError('Please select grade, subject, and month');
       setResults([]);
+      setHasSearched(false);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setHasSearched(true);
 
     try {
       const res = await api.get('/api/staff/assessments/results', {
         params: { grade: parseInt(grade), month: parseInt(month), subject }
       });
 
-      // Sort learners by average DESC
       const sorted = (res.data || []).sort((a, b) => b.monthly_average - a.monthly_average);
       setResults(sorted);
     } catch (err) {
@@ -154,11 +156,30 @@ const ViewResults = () => {
         </div>
       </div>
 
-      {/* Results Table */}
-      {results.length > 0 ? (
+      {/* Results Section */}
+      {loading ? (
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }} />
+        </div>
+      ) : hasSearched && results.length === 0 ? (
+        <div className="alert alert-warning text-center py-5 shadow rounded-4">
+          <i className="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+          <h5 className="mb-2">No Results Found</h5>
+          <p className="mb-0">
+            No assessments exist for Grade {grade} - {subject} in{' '}
+            {new Date(0, month - 1).toLocaleString('default', { month: 'long' })}.
+          </p>
+          <small className="text-muted">
+            Try a different month, subject, or check if assessments have been captured.
+          </small>
+        </div>
+      ) : results.length > 0 ? (
         <div className="card shadow-lg border-0 rounded-4 overflow-hidden">
           <div className="card-header bg-info text-white text-center py-3">
-            <h5 className="mb-0 fw-bold">Results for Grade {grade} - {subject} ({new Date(0, month - 1).toLocaleString('default', { month: 'long' })})</h5>
+            <h5 className="mb-0 fw-bold">
+              Results for Grade {grade} - {subject} (
+              {new Date(0, month - 1).toLocaleString('default', { month: 'long' })})
+            </h5>
           </div>
 
           <div className="card-body p-0">
@@ -207,7 +228,7 @@ const ViewResults = () => {
         </div>
       ) : (
         <div className="alert alert-info text-center py-5">
-          Select grade, subject, and month to view results
+          Select grade, subject, and month, then click "Load Results"
         </div>
       )}
     </div>

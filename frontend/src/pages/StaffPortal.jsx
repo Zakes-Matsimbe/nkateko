@@ -134,14 +134,19 @@ function StaffPortal() {
                   <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>View Results</span>
                 </button>
               </li>
-              {isAdmin && (
+              <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'class-list' ? 'active' : ''}`} onClick={() => setActiveTab('class-list')}>
+                  <i className="bi bi-people me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Class List</span>
+                </button>
+              </li>
                 <li className="nav-item">
                   <button className={`nav-link w-100 text-start ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}>
                     <i className="bi bi-calendar-check me-2"></i>
-                    <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Attendance</span>
+                    <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Capture Attendance</span>
                   </button>
                 </li>
-              )}
+
               <li className="nav-item">
                 <button className={`nav-link w-100 text-start ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
                   <i className="bi bi-bell me-2"></i>
@@ -154,12 +159,7 @@ function StaffPortal() {
                   <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Send Message</span>
                 </button>
               </li>
-              <li className="nav-item">
-                <button className={`nav-link w-100 text-start ${activeTab === 'class-list' ? 'active' : ''}`} onClick={() => setActiveTab('class-list')}>
-                  <i className="bi bi-people me-2"></i>
-                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Class List</span>
-                </button>
-              </li>
+
               <li className="nav-item mt-5">
                 <button className="nav-link w-100 text-start text-danger" onClick={logout}>
                   <i className="bi bi-box-arrow-right me-2"></i>

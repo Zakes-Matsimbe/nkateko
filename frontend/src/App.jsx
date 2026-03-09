@@ -6,6 +6,7 @@ import Website from './components/Website';
 import Login from './pages/Login';
 import LearnerPortal from './pages/LearnerPortal';
 import ParentPortal from './pages/ParentPortal';
+import StaffPortal from './pages/StaffPortal';
 
 function App() {
   const { initAuth, user } = useAuthStore();
@@ -41,6 +42,11 @@ function App() {
         <Route
           path="/parent"
           element={user ? <ParentPortal /> : <Navigate to="/login" replace />}
+        />
+
+        <Route
+          path="/staff"
+          element={user ? <StaffPortal /> : <Navigate to="/login" replace />}
         />
 
         {/* Add staff & admin later */}

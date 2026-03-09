@@ -78,3 +78,6 @@ CREATE TABLE IF NOT EXISTS `apologies` (
   FOREIGN KEY (`parent_id`) REFERENCES `parents`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`learner_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 );
+
+ALTER TABLE `staff`
+ADD COLUMN `grades` TEXT NULL DEFAULT NULL;

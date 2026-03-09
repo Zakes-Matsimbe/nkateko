@@ -36,7 +36,7 @@ def login(
 
     elif upper_id.startswith('BET'):
         query = text("""
-            SELECT id, names AS name, password, role 
+            SELECT id, names AS name, password, 'Staff' AS role
             FROM staff 
             WHERE staff_number = :id OR email = :id
         """)

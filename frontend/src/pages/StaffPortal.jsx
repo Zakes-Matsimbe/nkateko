@@ -7,7 +7,7 @@ import SessionReport from './staff_comp/SessionReports';
 import Unavailability from './staff_comp/Unavailability';
 import CaptureAssessments from './staff_comp/CaptureAssessments';
 import ViewResults from './staff_comp/ViewResults';
-import Attendance from './staff_comp/Attenandance';  // Admin only
+import CaptureAttendance from './staff_comp/CaptureAttenandance'; // Admin only
 import Notifications from './staff_comp/Notifications';
 import SendMessage from './staff_comp/SendMessage';
 import ClassList from './staff_comp/ClassList';  // with modal
@@ -123,12 +123,6 @@ function StaffPortal() {
                 </button>
               </li>
               <li className="nav-item">
-                <button className={`nav-link w-100 text-start ${activeTab === 'capture-assessments' ? 'active' : ''}`} onClick={() => setActiveTab('capture-assessments')}>
-                  <i className="bi bi-journal-check me-2"></i>
-                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Capture Assessments</span>
-                </button>
-              </li>
-              <li className="nav-item">
                 <button className={`nav-link w-100 text-start ${activeTab === 'view-results' ? 'active' : ''}`} onClick={() => setActiveTab('view-results')}>
                   <i className="bi bi-graph-up me-2"></i>
                   <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>View Results</span>
@@ -141,22 +135,27 @@ function StaffPortal() {
                 </button>
               </li>
                 <li className="nav-item">
-                  <button className={`nav-link w-100 text-start ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}>
+                  <button className={`nav-link w-100 text-start ${activeTab === 'capture-attendance' ? 'active' : ''}`} onClick={() => setActiveTab('capture-attendance')}>
                     <i className="bi bi-calendar-check me-2"></i>
                     <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Capture Attendance</span>
                   </button>
                 </li>
-
+                <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'capture-assessments' ? 'active' : ''}`} onClick={() => setActiveTab('capture-assessments')}>
+                  <i className="bi bi-journal-check me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Capture Assessments</span>
+                </button>
+              </li>
+                <li className="nav-item">
+                <button className={`nav-link w-100 text-start ${activeTab === 'send-message' ? 'active' : ''}`} onClick={() => setActiveTab('send-message')}>
+                  <i className="bi bi-envelope me-2"></i>
+                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Send Message</span>
+                </button>
+              </li>
               <li className="nav-item">
                 <button className={`nav-link w-100 text-start ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
                   <i className="bi bi-bell me-2"></i>
                   <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Notifications</span>
-                </button>
-              </li>
-              <li className="nav-item">
-                <button className={`nav-link w-100 text-start ${activeTab === 'send-message' ? 'active' : ''}`} onClick={() => setActiveTab('send-message')}>
-                  <i className="bi bi-envelope me-2"></i>
-                  <span style={{ display: sidebarCollapsed ? 'none' : 'inline' }}>Send Message</span>
                 </button>
               </li>
 
@@ -186,7 +185,7 @@ function StaffPortal() {
             {activeTab === 'unavailability' && <Unavailability />}
             {activeTab === 'capture-assessments' && <CaptureAssessments />}
             {activeTab === 'view-results' && <ViewResults />}
-            {activeTab === 'attendance' && isAdmin && <Attendance />}
+            {activeTab === 'capture-attendance' && <CaptureAttendance />}
             {activeTab === 'notifications' && <Notifications />}
             {activeTab === 'send-message' && <SendMessage />}
             {activeTab === 'class-list' && <ClassList />}

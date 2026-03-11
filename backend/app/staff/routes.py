@@ -15,6 +15,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 import string
+from utils.send_brevo_email import send_brevo_email
 
 
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -285,7 +286,7 @@ def get_learners_for_grade(
 
     # Exact same logic as your PHP code
     query = text("""
-        SELECT u.id, u.full_names, u.school
+        SELECT u.id, u.full_names, u.school, u.email
         FROM applications a
         JOIN users u ON u.id = a.user_id
         WHERE a.status = 'Accepted'
@@ -510,7 +511,7 @@ def get_learner_detail(
 
     # Attendance (current year)
     attendance = db.execute(text("""
-        SELECT class_date, status
+        SELECT class_date, status, apology_message
         FROM attendance_classes
         WHERE user_id = :lid AND YEAR(class_date) = YEAR(CURDATE())
         ORDER BY class_date DESC
@@ -532,11 +533,162 @@ def get_learner_detail(
     }
 
 
+@router.post("/attendance/capture")
+async def capture_attendance(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    staff_id = int(current_user["sub"])
+    data = await request.json()
 
+    grade = data["grade"]
+    class_date = data["class_date"]
+    attendance_list = data["attendance"]  # list of {learner_id, status, apology?}
+
+    if not grade or not class_date or not attendance_list:
+        raise HTTPException(422, "Missing required fields")
+
+    # Lock future dates
+    if class_date > datetime.now().date().isoformat():
+        raise HTTPException(403, "Cannot capture attendance for future dates")
+
+    db.begin()
+    try:
+        for item in attendance_list:
+            learner_id = int(item["learner_id"])
+            status = item["status"]
+            apology = item.get("apology", None) if status == "Apology" else None
+
+            db.execute(text("""
+                INSERT INTO attendance_classes 
+                (user_id, grade, class_date, status, apology_message, recorded_at, recorded_by)
+                VALUES (:lid, :grade, :date, :status, :apology, NOW(), :by)
+                ON DUPLICATE KEY UPDATE
+                    status = :status,
+                    apology_message = :apology,
+                    recorded_at = NOW(),
+                    recorded_by = :by
+            """), {
+                "lid": learner_id,
+                "grade": grade,
+                "date": class_date,
+                "status": status,
+                "apology": apology,
+                "by": current_user.get("name", "System")
+            })
+
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, str(e))
+
+
+@router.post("/messages")
+async def send_class_message(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+
+    data = await request.json()
+
+    grades = data["grades"]
+    title = data["title"].strip()
+    content = data["content"].strip()
+
+    staff_id = int(current_user["sub"])
+
+    staff_query = text("""
+        SELECT role,
+               CONCAT(names,' ',surname) AS name,
+               grades
+        FROM staff
+        WHERE id = :sid
+    """)
+
+    staff = db.execute(staff_query, {"sid": staff_id}).fetchone()
+
+    if not staff:
+        raise HTTPException(403, "Staff account not found")
+
+    sender_role = staff.role
+    sender_name = staff.name
+
+    allowed_roles = ['Admin','Teacher','Tutor']
+
+    if sender_role not in allowed_roles:
+        raise HTTPException(403, "Not allowed")
+
+    # staff assigned grades
+    if staff.grades.lower() == "all":
+        allowed_grades = ["10","11","12"]
+    else:
+        allowed_grades = [g.strip() for g in staff.grades.split(",")]
+
+    # Validate selected grades
+    for g in grades:
+        if g not in allowed_grades:
+            raise HTTPException(403, f"You cannot send to grade {g}")
+
+    grade_string = ",".join(grades)
+
+    db.execute(text("""
+        INSERT INTO notifications
+        (title,content,sender_name,sender_type,target_grades)
+        VALUES (:title,:content,:sender_name,:sender_type,:grades)
+    """),{
+        "title":title,
+        "content":content,
+        "sender_name":sender_name,
+        "sender_type":sender_role,
+        "grades":grade_string
+    })
+
+    db.commit()
+
+    return {"success":True}
+
+
+@router.get("/notifications")
+def get_class_notifications(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+
+    staff_id = int(current_user["sub"])
+
+    # Get staff name from DB
+    staff = db.execute(text("""
+        SELECT CONCAT(names,' ',surname) AS name
+        FROM staff
+        WHERE id = :sid
+    """), {"sid": staff_id}).fetchone()
+
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff account not found")
+
+    sender_name = staff.name
+
+    # Fetch notifications sent by this staff member
+    rows = db.execute(text("""
+        SELECT
+            id,
+            title,
+            content,
+            target_grades,
+            created_at
+        FROM notifications
+        WHERE sender_name = :sender_name
+        ORDER BY created_at DESC
+    """), {"sender_name": sender_name}).fetchall()
+
+    return [dict(r._mapping) for r in rows]
 
 
 # ── NOTIFICATIONS ──────────────────────────────────────────────────────────
-@router.get("/notifications")
+@router.get("/staffnotifications")
 def get_staff_notifications(
     limit: int = 5,
     db: Session = Depends(get_db),
@@ -562,3 +714,49 @@ def get_staff_notifications(
     results = db.execute(query, {"sid": staff_id, "limit": limit}).fetchall()
 
     return [dict(row._mapping) for row in results]
+
+
+@router.patch("/staffnotifications/{nid}/read")
+def mark_notification_read(
+    nid: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+
+    staff_id = int(current_user["sub"])
+
+    db.execute(text("""
+        UPDATE staff_notifications
+        SET is_read = 1
+        WHERE id = :nid AND staff_id = :sid
+    """), {"nid": nid, "sid": staff_id})
+
+    db.commit()
+
+    return {"success": True}
+
+
+class EmailRequest(BaseModel):
+    to: str
+    subject: str
+    html: str
+
+
+@router.post("/send-email")
+def send_email(
+    payload: EmailRequest,
+    current_user: dict = Depends(get_current_user)
+):
+
+    success = send_brevo_email(
+        payload.to,
+        payload.subject,
+        payload.html,
+        name=current_user.get("name",""),
+        reference=current_user.get("sub","")
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Email failed")
+
+    return {"message": "Email sent successfully"}

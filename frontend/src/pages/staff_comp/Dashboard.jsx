@@ -19,7 +19,7 @@ const Dashboard = () => {
         const [profileRes, timesheetsRes, notificationsRes] = await Promise.all([
           api.get('/api/staff/profile'),
           api.get('/api/staff/timesheets', { params: { year: new Date().getFullYear(), month: new Date().getMonth() + 1 } }),
-          api.get('/api/staff/notifications'),
+          api.get('/api/staff/staffnotifications'),
         ]);
 
         const profileData = profileRes.data;
